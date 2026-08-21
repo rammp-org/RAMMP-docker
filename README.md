@@ -1,6 +1,6 @@
 # rammp-docker-bases
 
-The base Docker images every RAMMP module builds on, which include ROS2 Humble, Cyclone DDS, and the ROS2 topic definitions for RAMMP. This repository is the foundation of our software system: each module lives in its own repository and builds its container `FROM` one of these published base images.
+The base Docker images every RAMMP module builds on, which include ROS2 Humble, Cyclone DDS, and the ROS2 interface for RAMMP. This repository is the foundation of our software system: each module lives in its own repository and builds its container `FROM` one of these published base images.
 
 ## In the registry
 
