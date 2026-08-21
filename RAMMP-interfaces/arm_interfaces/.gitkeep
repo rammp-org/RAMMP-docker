@@ -1,0 +1,2 @@
+Placeholder. `git mv` your existing arm_interfaces package here (package.xml,
+CMakeLists.txt, msg/, srv/, action/). Delete this .gitkeep afterward.
