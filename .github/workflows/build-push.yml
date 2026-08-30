@@ -3,15 +3,24 @@ name: build and publish base images
 # Builds rammp-base and rammp-cuda for linux/arm64 and publishes them to GHCR.
 #
 # Runs on ubuntu-24.04-arm: GitHub's NATIVE arm64 hosted runners, which are free
-# for public repositories. Native means no QEMU, so a build that would take
-# tens of minutes under emulation takes minutes here. The robot's Jetson is
+# for public repositories. Native means no QEMU emulation. The robot's Jetson is
 # deliberately NOT a self-hosted runner -- making field hardware a prerequisite
 # for publishing an image is a bad trade.
 #
+# Uses plain `docker build` via the Makefile, the same commands you run on the
+# Jetson, rather than buildx. That is deliberate: rammp-cuda is
+# `FROM rammp-base`, and buildx's docker-container driver keeps its own image
+# store, so a locally built rammp-base is invisible to the next buildx build --
+# which then tries to pull it from Docker Hub and fails with
+# "pull access denied ... insufficient_scope". Plain docker build shares the
+# daemon's image store, so the FROM resolves. It also means CI and the robot
+# run identical commands.
+#
 # What this proves: the images build, the CUDA and PyTorch stacks install and
 # link, and the interface packages compile for arm64.
-# What it CANNOT prove: that CUDA runs. A hosted arm64 runner has no GPU. That
-# last gap closes on the robot -- see scripts/smoke-test.sh.
+# What it CANNOT prove: that CUDA runs. A hosted arm64 runner has no GPU, so
+# scripts/smoke-test.sh skips its GPU section here. That gap closes on the
+# robot, where the same script runs those checks.
 
 on:
   push:
@@ -23,7 +32,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAMESPACE: ${{ github.repository_owner }}
 
 jobs:
   build:
@@ -35,6 +43,15 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+
+      - name: Free disk space
+        # rammp-cuda carries the CUDA runtime, cuDNN and PyTorch and runs to
+        # several GB. A hosted runner ships with ~14 GB free, so reclaim what
+        # the preinstalled toolchains are holding before building.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL || true
+          df -h /
 
       - name: Derive version
         id: version
@@ -50,8 +67,15 @@ jobs:
             echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Build images
+        # One invocation, not two: `cuda` depends on `base`, so make builds
+        # base once rather than re-running its recipe.
+        run: |
+          make base cuda VERSION=${{ steps.version.outputs.version }}
+          df -h /
+
+      - name: Smoke-test images
+        run: make test VERSION=${{ steps.version.outputs.version }}
 
       - name: Log in to GHCR
         if: steps.version.outputs.publish == 'true'
@@ -61,48 +85,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Built into the local daemon first, because rammp-cuda is FROM
-      # rammp-base and needs to resolve it locally before anything is pushed.
-      - name: Build rammp-base
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/base/Dockerfile
-          platforms: linux/arm64
-          build-args: VERSION=${{ steps.version.outputs.version }}
-          tags: rammp-base:${{ steps.version.outputs.version }}
-          load: true
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,scope=base,mode=max
-
-      - name: Build rammp-cuda
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/cuda/Dockerfile
-          platforms: linux/arm64
-          build-args: VERSION=${{ steps.version.outputs.version }}
-          tags: rammp-cuda:${{ steps.version.outputs.version }}
-          load: true
-          cache-from: type=gha,scope=cuda
-          cache-to: type=gha,scope=cuda,mode=max
-
-      - name: Verify images
-        run: |
-          set -euo pipefail
-          ./scripts/smoke-test.sh "rammp-base:${{ steps.version.outputs.version }}"
-          ./scripts/smoke-test.sh "rammp-cuda:${{ steps.version.outputs.version }}"
-
-      - name: Push release tags
+      - name: Publish release tags
         if: steps.version.outputs.publish == 'true'
-        env:
-          V: ${{ steps.version.outputs.version }}
-          NS: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}
         run: |
-          set -euo pipefail
-          for img in rammp-base rammp-cuda; do
-            docker tag "$img:$V" "$NS/$img:$V"
-            docker tag "$img:$V" "$NS/$img:humble"
-            docker push "$NS/$img:$V"
-            docker push "$NS/$img:humble"
-          done
+          make push \
+            VERSION=${{ steps.version.outputs.version }} \
+            REGISTRY=${{ env.REGISTRY }}/${{ github.repository_owner }}
