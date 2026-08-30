@@ -106,14 +106,32 @@ RUN ln -sfn "/usr/local/cuda-${CUDA_DOTTED}" /usr/local/cuda \
 # variable is unset, "$CUDA/lib64:${LD_LIBRARY_PATH}" expands with a trailing
 # colon, which the loader reads as "also search the current directory".
 
-# numpy is pinned EXPLICITLY even though the wheels only ask for "numpy":
-# the base image already carries jammy's apt numpy 1.21 (a ROS dependency),
-# which pip accepts as satisfying that requirement and torch then imports.
-# That numpy resolves BLAS through the system alternatives, which the
-# libopenblas0 install above switches to jammy's OpenBLAS 0.3.20 -- broken on
-# some arm64 CPUs (numpy's own sanity check fails on GitHub's Neoverse
-# runners). The pip numpy lands in /usr/local, shadows the apt one, and
-# bundles its own BLAS, so it behaves the same everywhere.
+# Two-step install, and the order is load-bearing.
+#
+# Step 1 -- torch/torchvision from the jetson index ALONE, --no-deps. pip
+# gives --index-url no priority over --extra-index-url: every index's
+# candidates compete, and for the same version the tie is broken by wheel-tag
+# specificity, where PyPI's manylinux_2_28_aarch64 outranks the jetson
+# wheels' plain linux_aarch64 tag. With pypi.org in the same command, PyPI's
+# aarch64 torch -- a CPU-only build -- silently wins. So the CUDA wheels are
+# installed with no competing index in sight.
+RUN pip install --no-cache-dir --no-deps \
+      --index-url "${JETSON_PIP_INDEX}" \
+      "torch==${TORCH_VERSION}" \
+      "torchvision==${TORCHVISION_VERSION}"
+
+# Step 2 -- their dependencies (pure-Python, safe from anywhere). torch and
+# torchvision are already satisfied at these exact pins, so pip does not
+# touch them; it only fills in what --no-deps skipped.
+#
+# numpy is pinned EXPLICITLY even though the wheels only ask for "numpy": the
+# base image carries jammy's apt numpy 1.21 (a ROS dependency), which pip
+# accepts as satisfying that requirement and torch then imports. That numpy
+# resolves BLAS through the system alternatives, which the libopenblas0
+# install above switches to jammy's OpenBLAS 0.3.20 -- broken on some arm64
+# CPUs (numpy's own sanity check fails on GitHub's Neoverse runners). The
+# pip numpy lands in /usr/local, shadows the apt one, and bundles its own
+# BLAS, so it behaves the same everywhere.
 RUN pip install --no-cache-dir \
       --index-url "${JETSON_PIP_INDEX}" \
       --extra-index-url https://pypi.org/simple \
@@ -132,7 +150,7 @@ assert numpy.__file__.startswith('/usr/local/'), f'apt numpy shadowed pip numpy:
 print('numpy', numpy.__version__, 'from', numpy.__file__); \
 print('torch', torch.__version__, '/ torchvision', torchvision.__version__); \
 print('compiled against CUDA', torch.version.cuda, '/ cuDNN', torch.backends.cudnn.version()); \
-assert torch.version.cuda is not None, 'torch has no CUDA support -- wrong wheel index?'"
+assert torch.version.cuda == '${CUDA_DOTTED}', f'torch built for CUDA {torch.version.cuda}, expected ${CUDA_DOTTED} -- wrong wheel source'"
 
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
