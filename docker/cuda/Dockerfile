@@ -1,67 +1,105 @@
-# rammp-cuda : rammp-base + CUDA PyTorch, for GPU / ML / perception modules.
+# syntax=docker/dockerfile:1
+
+# rammp-cuda : rammp-base + CUDA 12.6 runtime + PyTorch, for GPU/perception nodes.
 #
-# Same RAMMP-interfaces contract as rammp-base, plus CUDA-enabled torch. Use this
-# ONLY for nodes that need the GPU/ML stack; use rammp-base for everything else,
-# so lightweight modules don't haul around gigabytes of CUDA.
+# JETSON (linux/arm64) ONLY. There is no amd64 variant.
 #
-# Build from the REPO ROOT:
-#   x86:     make cuda
-#   Jetson:  make cuda-jetson JETSON_BASE=<your L4T ROS+PyTorch image>
+# Target hardware: Jetson Orin (NX or AGX) on JetPack 6.1/6.2, L4T r36.4.x.
+# Both Orin modules are the same Tegra234 SoC at compute capability sm_87, so a
+# single image serves both -- an image validated on an Orin NX is valid on an
+# AGX Orin. (What does NOT transfer between them: serialized TensorRT engines,
+# which are device-specific and must be rebuilt on the target.)
 #
-# ── Architecture split (CUDA_BASE build arg) ────────────────────────────────
-#   x86_64 (default): CUDA_BASE=rammp-base:<ver>. Inherits the interfaces, then
-#       pip-installs CUDA torch from PyPI.
-#   Jetson (arm64):   CUDA_BASE=<jetson-containers L4T ROS+PyTorch image matching
-#       your JetPack>, e.g. dustynv/ros:humble-pytorch-l4t-r36.2.0 (verify the tag
-#       for your JetPack at github.com/dusty-nv/jetson-containers). torch is
-#       inherited from that base - NOT fetched from the wheel index that failed
-#       before. The interface/Cyclone steps below then add the RAMMP pieces the
-#       L4T base doesn't have.
-# The interface + Cyclone steps are idempotent: a few seconds of redundant
-# rebuild on x86 (already in rammp-base), and genuinely required on the Jetson.
+# Build from the REPO ROOT, after `make base`:
+#   make cuda
+#
+# ── How the GPU stack is assembled ──────────────────────────────────────────
+# Same lineage as every other RAMMP image: FROM rammp-base, so the ROS 2 and
+# RAMMP-interfaces layers are shared and the interface contract is identical by
+# construction rather than by convention.
+#
+# CUDA comes from NVIDIA's Tegra apt repo (repos/ubuntu2204/arm64 -- the arm64
+# tree is Tegra/Jetson; sbsa is server ARM and is NOT interchangeable). We
+# install cuda-libraries, the RUNTIME libraries only:
+#   * not cuda-toolkit  -- nvcc and headers are build tooling no runtime needs,
+#     and they roughly triple the image size.
+#   * no driver package -- libcuda.so is injected at run time by the Jetson's
+#     nvidia container runtime. A driver baked into the image would collide
+#     with the one the host mounts.
+# Hence this image MUST be run with `--runtime nvidia` on the Jetson; without
+# it there is no libcuda.so and torch.cuda.is_available() returns False.
+#
+# PyTorch comes from the jetson-ai-lab index, which serves aarch64 wheels built
+# against CUDA 12.6 for Python 3.10 (matching Ubuntu 22.04 / ROS Humble).
+# NOTE the host: pypi.jetson-ai-lab.IO. The old .dev domain is dead and is the
+# likely reason an earlier attempt at this approach failed.
 # ────────────────────────────────────────────────────────────────────────────
 
-ARG CUDA_BASE=rammp-base:1.0.0
-FROM ${CUDA_BASE}
+ARG VERSION=dev
+FROM rammp-base:${VERSION}
 
-WORKDIR /ros2_ws
+ARG VERSION
+LABEL org.opencontainers.image.source="https://github.com/rammp-org/RAMMP-docker" \
+      org.opencontainers.image.description="rammp-base + CUDA 12.6 runtime + PyTorch (Jetson Orin, JetPack 6.1/6.2)" \
+      org.opencontainers.image.version="${VERSION}"
 
-# Cyclone + pip (no-op on rammp-base; needed on a bare L4T base).
-RUN apt-get update && \
-    apt-get install -y ros-humble-rmw-cyclonedds-cpp python3-pip && \
-    rm -rf /var/lib/apt/lists/*
-RUN rosdep update --rosdistro humble
+ARG DEBIAN_FRONTEND=noninteractive
 
-# RAMMP-interfaces: inherited already-built on x86 (rebuilds in seconds); built
-# from scratch on the Jetson L4T base. Guarantees every rammp-cuda image carries
-# the robot contract regardless of which base it started from.
-COPY RAMMP-interfaces/ /ros2_ws/src/RAMMP-interfaces/
-RUN . /opt/ros/humble/setup.sh && \
-    apt-get update && \
-    rosdep install --from-paths src --ignore-src -y && \
-    rm -rf /var/lib/apt/lists/* && \
-    colcon build --symlink-install
+# Pinned so a rebuild six months from now produces the same stack. To move the
+# GPU stack, change these -- nothing else in the file should need touching.
+ARG CUDA_SERIES=12-6
+ARG CUDA_DOTTED=12.6
+ARG CUDA_VERSION=12.6.3-1
+ARG CUDNN_VERSION=9.20.0.48-1
+ARG TORCH_VERSION=2.10.0
+ARG TORCHVISION_VERSION=0.25.0
+ARG JETSON_PIP_INDEX=https://pypi.jetson-ai-lab.io/jp6/cu126
 
-# Entrypoint (ensure present when FROM a bare L4T base).
-RUN printf '%s\n' \
-      '#!/bin/bash' 'set -e' \
-      'source /opt/ros/humble/setup.bash' \
-      'if [ -f /ros2_ws/install/setup.bash ]; then source /ros2_ws/install/setup.bash; fi' \
-      'exec "$@"' \
-      > /ros_entrypoint.sh && chmod +x /ros_entrypoint.sh && \
-    echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc && \
-    echo 'if [ -f /ros2_ws/install/setup.bash ]; then source /ros2_ws/install/setup.bash; fi' >> /root/.bashrc
-
-# PyTorch: x86 from PyPI (CUDA build); arm64 inherited from the L4T base.
-ARG TORCH_X86=2.10.0
-ARG TORCHVISION_X86=0.25.0
-RUN set -eux; \
-    if [ "$(uname -m)" = "x86_64" ]; then \
-        pip install --no-cache-dir "torch==${TORCH_X86}" "torchvision==${TORCHVISION_X86}"; \
-    else \
-        python3 -c "import torch; print('inherited torch', torch.__version__, 'cuda?', torch.cuda.is_available())" \
-          || echo "WARNING: no torch in the L4T base image - pick a jetson-containers image that includes PyTorch."; \
+# Fail loudly and early rather than producing a broken amd64 image.
+RUN if [ "$(uname -m)" != "aarch64" ]; then \
+        echo "ERROR: rammp-cuda is Jetson/arm64 only, but this build is $(uname -m)." >&2; \
+        echo "       Build it on the Jetson, or on a native arm64 runner." >&2; \
+        exit 1; \
     fi
+
+RUN curl -fsSL -o /tmp/cuda-keyring.deb \
+      "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/arm64/cuda-keyring_1.1-1_all.deb" \
+    && dpkg -i /tmp/cuda-keyring.deb \
+    && rm -f /tmp/cuda-keyring.deb \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+         "cuda-libraries-${CUDA_SERIES}=${CUDA_VERSION}" \
+         "libcudnn9-cuda-12=${CUDNN_VERSION}" \
+         libopenblas0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# cuda-libraries installs to a versioned prefix and does not create the
+# conventional /usr/local/cuda symlink (that comes with cuda-toolkit), so make
+# it ourselves -- plenty of downstream code assumes CUDA_HOME=/usr/local/cuda.
+ENV CUDA_HOME=/usr/local/cuda
+RUN ln -sfn "/usr/local/cuda-${CUDA_DOTTED}" /usr/local/cuda \
+    && echo "/usr/local/cuda/lib64" > /etc/ld.so.conf.d/000_cuda.conf \
+    && ldconfig
+# Registered with ldconfig rather than prepended to LD_LIBRARY_PATH: when that
+# variable is unset, "$CUDA/lib64:${LD_LIBRARY_PATH}" expands with a trailing
+# colon, which the loader reads as "also search the current directory".
+
+RUN pip install --no-cache-dir \
+      --index-url "${JETSON_PIP_INDEX}" \
+      --extra-index-url https://pypi.org/simple \
+      "torch==${TORCH_VERSION}" \
+      "torchvision==${TORCHVISION_VERSION}"
+
+# Build-time sanity check. Importing torch and reading the CUDA it was compiled
+# against needs no GPU, so this runs on a GPU-less CI runner and still catches
+# the common failures: wrong wheel arch, missing cuDNN, broken linkage.
+# Whether CUDA actually *runs* can only be checked on the Jetson --
+# scripts/smoke-test.sh does that.
+RUN python3 -c "\
+import torch, torchvision; \
+print('torch', torch.__version__, '/ torchvision', torchvision.__version__); \
+print('compiled against CUDA', torch.version.cuda, '/ cuDNN', torch.backends.cudnn.version()); \
+assert torch.version.cuda is not None, 'torch has no CUDA support -- wrong wheel index?'"
 
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]

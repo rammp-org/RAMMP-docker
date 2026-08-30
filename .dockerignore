@@ -1,0 +1,10 @@
+.git
+.github
+scripts
+templates
+*.md
+**/__pycache__
+**/*.pyc
+build/
+install/
+log/

@@ -1,52 +1,55 @@
 # Build and publish the RAMMP base images.
 #
-# Version the images explicitly. Bump VERSION when RAMMP-interfaces or the base
-# setup changes, then rebuild + repush; modules pin this version in their FROM.
+# These images are linux/arm64 ONLY -- the robot's only compute target is a
+# Jetson Orin. There is no amd64 variant, so there are no multi-arch manifests
+# to combine and no architecture-suffixed tags: one platform, one tag.
+#
+# Run these ON THE JETSON (or let CI do it). Plain `docker build`, so no buildx
+# plugin is required on the robot.
+#
+# Bump VERSION when RAMMP-interfaces or the base setup changes, then tag a
+# release; modules pin this version in their FROM.
+
 REGISTRY ?= ghcr.io/rammp-org
 VERSION  ?= 1.0.0
 DISTRO   ?= humble
 
-# Jetson only: the L4T ROS+PyTorch image matching your JetPack (see docker/cuda).
-JETSON_BASE ?= dustynv/ros:humble-pytorch-l4t-r36.2.0
-
 # Both images build from the REPO ROOT because they COPY RAMMP-interfaces/.
-.PHONY: help base cuda cuda-jetson push-base push-cuda
+BUILD = docker build --build-arg VERSION=$(VERSION)
+
+.PHONY: help base cuda test push clean
 
 help:
-	@echo "Local builds (run on the target arch):"
-	@echo "  make base          - rammp-base:$(VERSION) (+ :$(DISTRO))"
-	@echo "  make cuda          - rammp-cuda on x86 (FROM rammp-base + CUDA torch)"
-	@echo "  make cuda-jetson   - rammp-cuda on a Jetson (FROM JETSON_BASE)"
-	@echo "Publish to $(REGISTRY) (run 'docker login ghcr.io' first):"
-	@echo "  make push-base / make push-cuda"
-	@echo "Override: VERSION=$(VERSION) REGISTRY=$(REGISTRY) JETSON_BASE=$(JETSON_BASE)"
+	@echo "RAMMP base images -- arm64/Jetson only (VERSION=$(VERSION))"
+	@echo
+	@echo "  make base    build rammp-base:$(VERSION) (+ :$(DISTRO))"
+	@echo "  make cuda    build rammp-cuda:$(VERSION) (+ :$(DISTRO))"
+	@echo "  make test    smoke-test the built images"
+	@echo "  make push    publish both to $(REGISTRY) (docker login ghcr.io first)"
+	@echo
+	@echo "Normally you don't push by hand: tagging a release (git tag v1.0.0)"
+	@echo "makes CI build and publish both images."
 
 base:
-	docker build -f docker/base/Dockerfile \
+	$(BUILD) -f docker/base/Dockerfile \
 	  -t rammp-base:$(VERSION) -t rammp-base:$(DISTRO) .
 
 cuda: base
-	docker build -f docker/cuda/Dockerfile \
-	  --build-arg CUDA_BASE=rammp-base:$(VERSION) \
+	$(BUILD) -f docker/cuda/Dockerfile \
 	  -t rammp-cuda:$(VERSION) -t rammp-cuda:$(DISTRO) .
 
-cuda-jetson: base
-	docker build -f docker/cuda/Dockerfile \
-	  --build-arg CUDA_BASE=$(JETSON_BASE) \
-	  -t rammp-cuda:$(VERSION) -t rammp-cuda:$(DISTRO) .
+test:
+	./scripts/smoke-test.sh rammp-base:$(VERSION)
+	./scripts/smoke-test.sh rammp-cuda:$(VERSION)
 
-# ── publish ──────────────────────────────────────────────────────────────────
-# Run on the arch you're publishing (x86 from an x86 box, arm64 from a Jetson).
-# To serve both arches under one pullable tag, push arch-suffixed tags and then
-# combine with `docker buildx imagetools create` (see README).
-push-base: base
-	docker tag  rammp-base:$(VERSION) $(REGISTRY)/rammp-base:$(VERSION)
-	docker tag  rammp-base:$(DISTRO)  $(REGISTRY)/rammp-base:$(DISTRO)
-	docker push $(REGISTRY)/rammp-base:$(VERSION)
-	docker push $(REGISTRY)/rammp-base:$(DISTRO)
+push: cuda
+	for img in rammp-base rammp-cuda; do \
+	  docker tag  $$img:$(VERSION) $(REGISTRY)/$$img:$(VERSION); \
+	  docker tag  $$img:$(VERSION) $(REGISTRY)/$$img:$(DISTRO); \
+	  docker push $(REGISTRY)/$$img:$(VERSION); \
+	  docker push $(REGISTRY)/$$img:$(DISTRO); \
+	done
 
-push-cuda: cuda
-	docker tag  rammp-cuda:$(VERSION) $(REGISTRY)/rammp-cuda:$(VERSION)
-	docker tag  rammp-cuda:$(DISTRO)  $(REGISTRY)/rammp-cuda:$(DISTRO)
-	docker push $(REGISTRY)/rammp-cuda:$(VERSION)
-	docker push $(REGISTRY)/rammp-cuda:$(DISTRO)
+clean:
+	-docker rmi rammp-base:$(VERSION) rammp-base:$(DISTRO) \
+	            rammp-cuda:$(VERSION) rammp-cuda:$(DISTRO)

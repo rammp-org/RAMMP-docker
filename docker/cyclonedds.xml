@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Default Cyclone DDS configuration for RAMMP containers.
+
+  Installing ros-humble-rmw-cyclonedds-cpp is not enough to actually use
+  Cyclone: without RMW_IMPLEMENTATION set, ROS 2 silently falls back to Fast
+  DDS. The base image sets both RMW_IMPLEMENTATION and CYCLONEDDS_URI so every
+  module inherits a consistent, working middleware.
+
+  autodetermine="true" makes Cyclone pick the first non-loopback,
+  multicast-capable interface. Run containers with `--network host` so that
+  interface is the robot's real NIC; on a Docker bridge network, Cyclone will
+  bind the bridge and nodes in other containers will not discover each other.
+
+  Override for a specific robot or bench setup by mounting your own file and
+  pointing CYCLONEDDS_URI at it:
+      docker run -e CYCLONEDDS_URI=file:///cfg/my.xml -v ./my.xml:/cfg/my.xml ...
+-->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface autodetermine="true" priority="default" multicast="default" />
+      </Interfaces>
+      <AllowMulticast>default</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
