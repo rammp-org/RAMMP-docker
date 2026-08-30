@@ -32,7 +32,12 @@ echo "== smoke test: $IMAGE =="
 
 # ── what are we testing, and where? ──────────────────────────────────────────
 docker image inspect "$IMAGE" >/dev/null 2>&1 || { echo "no such image: $IMAGE" >&2; exit 1; }
-HAS_CUDA=false; run python3 -c 'import torch' >/dev/null 2>&1 && HAS_CUDA=true
+# Detected via find_spec, which locates the package WITHOUT loading its
+# shared libraries: if torch is installed but broken, the checks below must
+# FAIL loudly, not silently reclassify the image as a base image.
+HAS_CUDA=false
+run python3 -c 'import importlib.util,sys; sys.exit(0 if importlib.util.find_spec("torch") else 1)' \
+    >/dev/null 2>&1 && HAS_CUDA=true
 HAS_GPU=false
 if [ -f /etc/nv_tegra_release ] && docker info 2>/dev/null | grep -qi 'runtimes:.*nvidia'; then
     HAS_GPU=true

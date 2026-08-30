@@ -20,7 +20,8 @@
 #
 # CUDA comes from NVIDIA's Tegra apt repo (repos/ubuntu2204/arm64 -- the arm64
 # tree is Tegra/Jetson; sbsa is server ARM and is NOT interchangeable). We
-# install cuda-libraries, the RUNTIME libraries only:
+# install the RUNTIME libraries only (cuda-libraries + the extra libs the
+# torch wheels hard-link -- see the apt step):
 #   * not cuda-toolkit  -- nvcc and headers are build tooling no runtime needs,
 #     and they roughly triple the image size.
 #   * no driver package -- libcuda.so is injected at run time by the Jetson's
@@ -50,6 +51,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG CUDA_SERIES=12-6
 ARG CUDA_DOTTED=12.6
 ARG CUDA_VERSION=12.6.3-1
+ARG CUPTI_VERSION=12.6.80-1
+ARG CUDSS_VERSION=0.8.0.10-1
 ARG CUDNN_VERSION=9.20.0.48-1
 ARG TORCH_VERSION=2.10.0
 ARG TORCHVISION_VERSION=0.25.0
@@ -69,17 +72,35 @@ RUN curl -fsSL -o /tmp/cuda-keyring.deb \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
          "cuda-libraries-${CUDA_SERIES}=${CUDA_VERSION}" \
+         "cuda-cupti-${CUDA_SERIES}=${CUPTI_VERSION}" \
+         "libcudss0-cuda-12=${CUDSS_VERSION}" \
          "libcudnn9-cuda-12=${CUDNN_VERSION}" \
          libopenblas0 \
+         libnuma1 \
+         libatomic1 \
+         libjpeg-turbo8 \
+         libpng16-16 \
     && rm -rf /var/lib/apt/lists/*
+
+# Everything above is a hard link-time dependency of the jetson-ai-lab torch/
+# torchvision wheels (verified with readelf against the exact pinned wheels):
+# cuda-libraries is not enough on its own -- libtorch_cpu links CUPTI and
+# libtorch_cuda links cuDSS, neither of which cuda-libraries provides, and
+# torchvision links the system libjpeg/libpng.
 
 # cuda-libraries installs to a versioned prefix and does not create the
 # conventional /usr/local/cuda symlink (that comes with cuda-toolkit), so make
 # it ourselves -- plenty of downstream code assumes CUDA_HOME=/usr/local/cuda.
 ENV CUDA_HOME=/usr/local/cuda
 RUN ln -sfn "/usr/local/cuda-${CUDA_DOTTED}" /usr/local/cuda \
-    && echo "/usr/local/cuda/lib64" > /etc/ld.so.conf.d/000_cuda.conf \
+    && printf '%s\n' \
+         "/usr/local/cuda/lib64" \
+         "/usr/lib/aarch64-linux-gnu/libcudss/12" \
+         > /etc/ld.so.conf.d/000_cuda.conf \
     && ldconfig
+# The cudss entry is required: its deb installs into that subdirectory but
+# registers no loader path of its own, and the torch libs' RUNPATH is only
+# $ORIGIN, so without this line libcudss.so.0 is unresolvable.
 # Registered with ldconfig rather than prepended to LD_LIBRARY_PATH: when that
 # variable is unset, "$CUDA/lib64:${LD_LIBRARY_PATH}" expands with a trailing
 # colon, which the loader reads as "also search the current directory".
