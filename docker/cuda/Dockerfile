@@ -56,6 +56,7 @@ ARG CUDSS_VERSION=0.8.0.10-1
 ARG CUDNN_VERSION=9.20.0.48-1
 ARG TORCH_VERSION=2.10.0
 ARG TORCHVISION_VERSION=0.25.0
+ARG NUMPY_VERSION=1.26.4
 ARG JETSON_PIP_INDEX=https://pypi.jetson-ai-lab.io/jp6/cu126
 
 # Fail loudly and early rather than producing a broken amd64 image.
@@ -105,11 +106,20 @@ RUN ln -sfn "/usr/local/cuda-${CUDA_DOTTED}" /usr/local/cuda \
 # variable is unset, "$CUDA/lib64:${LD_LIBRARY_PATH}" expands with a trailing
 # colon, which the loader reads as "also search the current directory".
 
+# numpy is pinned EXPLICITLY even though the wheels only ask for "numpy":
+# the base image already carries jammy's apt numpy 1.21 (a ROS dependency),
+# which pip accepts as satisfying that requirement and torch then imports.
+# That numpy resolves BLAS through the system alternatives, which the
+# libopenblas0 install above switches to jammy's OpenBLAS 0.3.20 -- broken on
+# some arm64 CPUs (numpy's own sanity check fails on GitHub's Neoverse
+# runners). The pip numpy lands in /usr/local, shadows the apt one, and
+# bundles its own BLAS, so it behaves the same everywhere.
 RUN pip install --no-cache-dir \
       --index-url "${JETSON_PIP_INDEX}" \
       --extra-index-url https://pypi.org/simple \
       "torch==${TORCH_VERSION}" \
-      "torchvision==${TORCHVISION_VERSION}"
+      "torchvision==${TORCHVISION_VERSION}" \
+      "numpy==${NUMPY_VERSION}"
 
 # Build-time sanity check. Importing torch and reading the CUDA it was compiled
 # against needs no GPU, so this runs on a GPU-less CI runner and still catches
@@ -117,7 +127,9 @@ RUN pip install --no-cache-dir \
 # Whether CUDA actually *runs* can only be checked on the Jetson --
 # scripts/smoke-test.sh does that.
 RUN python3 -c "\
-import torch, torchvision; \
+import numpy, torch, torchvision; \
+assert numpy.__file__.startswith('/usr/local/'), f'apt numpy shadowed pip numpy: {numpy.__file__}'; \
+print('numpy', numpy.__version__, 'from', numpy.__file__); \
 print('torch', torch.__version__, '/ torchvision', torchvision.__version__); \
 print('compiled against CUDA', torch.version.cuda, '/ cuDNN', torch.backends.cudnn.version()); \
 assert torch.version.cuda is not None, 'torch has no CUDA support -- wrong wheel index?'"
