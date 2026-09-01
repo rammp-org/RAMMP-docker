@@ -104,6 +104,15 @@ RUN curl -fsSL -o /tmp/cuda-keyring.deb \
 # cuda-libraries installs to a versioned prefix and does not create the
 # conventional /usr/local/cuda symlink (that comes with cuda-toolkit), so make
 # it ourselves -- plenty of downstream code assumes CUDA_HOME=/usr/local/cuda.
+# The NVIDIA container runtime injects the host's driver only into containers
+# whose environment ASKS for it: `--runtime nvidia` selects the runtime, but
+# its hook checks NVIDIA_VISIBLE_DEVICES to decide whether to mount anything.
+# NVIDIA's own L4T images set this pair; ros:humble (our lineage) does not, so
+# without these the hook mounts NOTHING and torch reports "Found no NVIDIA
+# driver" even under --runtime nvidia.
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=all
+
 ENV CUDA_HOME=/usr/local/cuda
 RUN ln -sfn "/usr/local/cuda-${CUDA_DOTTED}" /usr/local/cuda \
     && printf '%s\n' \

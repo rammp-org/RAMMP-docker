@@ -90,6 +90,12 @@ print(f"torch {torch.__version__} / torchvision {torchvision.__version__} / CUDA
     # would collide with the host's and break CUDA in confusing ways.
     check "no driver baked into the image" run bash -c \
         '! ls /usr/local/cuda/lib64/libcuda.so.1 >/dev/null 2>&1 && echo ok'
+    # ...but the runtime only injects that driver if the image ASKS: its hook
+    # keys off NVIDIA_VISIBLE_DEVICES, not off --runtime nvidia alone. Checked
+    # here because it needs no GPU -- CI catches a missing env before the
+    # Jetson ever sees the image.
+    check "image requests driver injection (NVIDIA_VISIBLE_DEVICES)" run bash -c \
+        '[ -n "$NVIDIA_VISIBLE_DEVICES" ] && echo "NVIDIA_VISIBLE_DEVICES=$NVIDIA_VISIBLE_DEVICES"'
 
     echo
     echo "-- GPU execution (Jetson only) --"
