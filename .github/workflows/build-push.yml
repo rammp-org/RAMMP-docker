@@ -59,8 +59,20 @@ jobs:
           # A v* tag publishes that version; anything else is an unpublished
           # build labelled by commit, so untagged pushes can never overwrite a
           # release tag in the registry.
+          #
+          # Release tags are v<semver>-jp<N> (e.g. v1.2.0-jp6): the semver
+          # tracks the interface contract and base setup, the -jp suffix the
+          # JetPack generation the image runs on. A prerelease slot is allowed
+          # for rehearsal tags, e.g. v1.0.0-rc1-jp6. Enforced here so a
+          # mistyped tag fails the build instead of publishing an image whose
+          # tag doesn't say what JetPack it targets.
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?-jp[0-9]+$ ]]; then
+              echo "::error::tag v${VERSION} does not match v<semver>-jp<N> (e.g. v1.2.0-jp6)"
+              exit 1
+            fi
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
             echo "publish=true" >> "$GITHUB_OUTPUT"
           else
             echo "version=0.0.0-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"

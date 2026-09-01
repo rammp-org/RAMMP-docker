@@ -23,7 +23,7 @@
 #
 # These images are arm64/Jetson only -- build your module on the Jetson, or on
 # a native arm64 CI runner.
-FROM ghcr.io/rammp-org/rammp-cuda:1.0.0
+FROM ghcr.io/rammp-org/rammp-cuda:1.0.0-jp6
 
 # ── Build your packages into their own overlay ──────────────────────────────
 # /module_ws is a separate workspace layered on top of the base's /ros2_ws. The

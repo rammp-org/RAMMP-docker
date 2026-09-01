@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Verify a built RAMMP image.
 #
-#   ./scripts/smoke-test.sh                    # defaults to rammp-cuda:1.0.0
-#   ./scripts/smoke-test.sh rammp-base:1.0.0
-#   ./scripts/smoke-test.sh ghcr.io/rammp-org/rammp-cuda:1.0.0
+#   ./scripts/smoke-test.sh                    # defaults to rammp-cuda:1.0.0-jp6
+#   ./scripts/smoke-test.sh rammp-base:1.0.0-jp6
+#   ./scripts/smoke-test.sh ghcr.io/rammp-org/rammp-cuda:1.0.0-jp6
 #
 # One script, two environments. It detects whether the image carries the CUDA
 # stack and whether the host can actually run GPU work, then tests accordingly:
@@ -17,7 +17,7 @@
 # anything memory-bound -- the NX has far less RAM and is the stricter test.
 set -uo pipefail
 
-IMAGE="${1:-rammp-cuda:1.0.0}"
+IMAGE="${1:-rammp-cuda:1.0.0-jp6}"
 PASS=0; FAIL=0; SKIP=0
 
 pass() { printf '  \033[32mPASS\033[0m %s\n' "$1"; [ -n "${2:-}" ] && printf '       %s\n' "$2"; PASS=$((PASS+1)); }

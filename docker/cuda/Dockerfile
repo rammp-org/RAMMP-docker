@@ -59,6 +59,15 @@ ARG TORCHVISION_VERSION=0.25.0
 ARG NUMPY_VERSION=1.26.4
 ARG JETSON_PIP_INDEX=https://pypi.jetson-ai-lab.io/jp6/cu126
 
+# Exact component versions as labels (org.rammp.interfaces is inherited from
+# rammp-base). The image TAG only carries <semver>-jp<N>; everything finer
+# lives here, where `docker inspect` can read it:
+#   docker inspect --format '{{json .Config.Labels}}' rammp-cuda:<tag>
+LABEL org.rammp.jetpack="6 (L4T r36.4)" \
+      org.rammp.cuda="${CUDA_VERSION}" \
+      org.rammp.cudnn="${CUDNN_VERSION}" \
+      org.rammp.torch="${TORCH_VERSION}"
+
 # Fail loudly and early rather than producing a broken amd64 image.
 RUN if [ "$(uname -m)" != "aarch64" ]; then \
         echo "ERROR: rammp-cuda is Jetson/arm64 only, but this build is $(uname -m)." >&2; \

@@ -7,15 +7,27 @@
 # Run these ON THE JETSON (or let CI do it). Plain `docker build`, so no buildx
 # plugin is required on the robot.
 #
-# Bump VERSION when RAMMP-interfaces or the base setup changes, then tag a
-# release; modules pin this version in their FROM.
+# VERSION is <semver>-jp<N>, e.g. 1.2.0-jp6. The semver tracks the interface
+# contract and base setup: major/minor for RAMMP-interfaces changes, patch for
+# base plumbing. The -jp suffix names the JetPack generation the image runs on
+# (jp6 covers all of JetPack 6.1/6.2 -- same L4T r36.4.x, same CUDA 12.6) and
+# changes only when the robot moves to a new JetPack. Bump it, tag a release
+# (git tag v1.2.0-jp6), and modules pin the full version in their FROM.
 
 REGISTRY ?= ghcr.io/rammp-org
-VERSION  ?= 1.0.0
+VERSION  ?= 1.0.0-jp6
 DISTRO   ?= humble
 
+# The interface contract version compiled into the image, read from the
+# packages themselves and recorded as an OCI label (org.rammp.interfaces) so
+# `docker inspect` can answer "which contract is in this image". Keep the two
+# package.xml <version>s in lockstep with the semver half of VERSION.
+INTERFACES_VERSION := $(shell sed -n 's:.*<version>\(.*\)</version>.*:\1:p' \
+  RAMMP-interfaces/arm_interfaces/package.xml)
+
 # Both images build from the REPO ROOT because they COPY RAMMP-interfaces/.
-BUILD = docker build --build-arg VERSION=$(VERSION)
+BUILD = docker build --build-arg VERSION=$(VERSION) \
+                     --build-arg INTERFACES_VERSION=$(INTERFACES_VERSION)
 
 .PHONY: help base cuda test push clean
 
@@ -27,7 +39,7 @@ help:
 	@echo "  make test    smoke-test the built images"
 	@echo "  make push    publish both to $(REGISTRY) (docker login ghcr.io first)"
 	@echo
-	@echo "Normally you don't push by hand: tagging a release (git tag v1.0.0)"
+	@echo "Normally you don't push by hand: tagging a release (git tag v1.0.0-jp6)"
 	@echo "makes CI build and publish both images."
 
 base:

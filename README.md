@@ -26,6 +26,34 @@ do not carry: serialized TensorRT engines, which are device-specific and must be
 rebuilt on the target, and anything memory-bound, since the NX has considerably
 less RAM.
 
+## Host requirements (running these images)
+
+Docker isolates everything *inside* the image, but two things must come from
+the machine you run on: the CPU architecture and, for `rammp-cuda`, the GPU
+driver.
+
+**`rammp-base`** runs on any **arm64/aarch64** host with Docker — a Jetson,
+but also an ARM Mac (inside an arm64 Linux VM / Docker Desktop) or an AWS
+Graviton instance, since it needs no GPU. It will not run on an x86 machine:
+there is no amd64 variant, and you get `exec format error`.
+
+**`rammp-cuda`** runs only on a **Jetson Orin with JetPack 6.x (L4T r36.4.x)**:
+
+- The image ships the CUDA 12.6 **runtime libraries but no driver**.
+  `libcuda.so` and the GPU driver are injected at container start by the
+  **NVIDIA Container Runtime** (`nvidia-container-toolkit`, preinstalled by
+  JetPack) — hence `--runtime nvidia` on every run.
+- Because the driver comes from the *host's* L4T, the host's JetPack
+  generation must match the image's CUDA: JetPack 6.x provides the CUDA
+  12.6-era driver this image expects. A JetPack 5 host (CUDA 11.4 era) cannot
+  run it.
+- Nothing needs installing on the host beyond JetPack itself — the desktop
+  `nvidia-driver`/CUDA-toolkit story does not apply to Jetson.
+- A non-Jetson ARM server with an NVIDIA GPU will **not** work either: the
+  image's CUDA packages come from NVIDIA's Tegra tree
+  (`repos/ubuntu2204/arm64`), which is not interchangeable with the
+  server-ARM (`sbsa`) tree.
+
 ## In the registry
 
 ```bash
@@ -36,7 +64,7 @@ docker pull ghcr.io/rammp-org/rammp-cuda:humble   # latest CUDA base
 Or reference it in a module's `Dockerfile`:
 
 ```dockerfile
-FROM ghcr.io/rammp-org/rammp-cuda:1.0.0
+FROM ghcr.io/rammp-org/rammp-cuda:1.0.0-jp6
 ```
 
 ## The two images
@@ -71,7 +99,7 @@ Jetson-specific wheels with ones that cannot drive the GPU.
 
 ```bash
 docker run --rm --runtime nvidia --network host --ipc host \
-  ghcr.io/rammp-org/rammp-cuda:1.0.0
+  ghcr.io/rammp-org/rammp-cuda:1.0.0-jp6
 ```
 
 - `--runtime nvidia` — required for every `rammp-cuda` image (see above).
@@ -99,11 +127,33 @@ own file and setting the variable.
 
 ## Versioning
 
-- **A pinned version**, e.g. `rammp-cuda:1.0.0` — immutable. **Pin this in your
-  module's `FROM`.** It records exactly which interface version your module was
-  built against, which is what stops independently-built module repos from
-  drifting out of sync. Mismatched interface versions make topics and actions
-  quietly stop working.
+Release versions are **`<semver>-jp<N>`**, e.g. `rammp-cuda:1.2.0-jp6`:
+
+- The **semver tracks the interface contract and base setup**: bump major for
+  a breaking `RAMMP-interfaces` change, minor for an additive one, patch for
+  base plumbing (torch pin, apt packages, entrypoint). Keep the `<version>` in
+  the two interface packages' `package.xml` in lockstep with it, so the
+  compiled packages self-report the contract version.
+- The **`-jp` suffix names the JetPack generation** the image runs on. It is
+  `jp6` for all of JetPack 6.1/6.2 (same L4T r36.4.x, same CUDA 12.6) and
+  changes only when the robot moves to a new JetPack — at which point images
+  for both generations can coexist in the registry without being confused.
+
+Everything finer-grained (exact CUDA, cuDNN, and torch versions, the compiled
+interface version) is recorded as OCI **labels**, not in the tag:
+
+```bash
+docker inspect --format '{{json .Config.Labels}}' \
+  ghcr.io/rammp-org/rammp-cuda:1.2.0-jp6
+```
+
+Which tag to use:
+
+- **A pinned version**, e.g. `rammp-cuda:1.2.0-jp6` — immutable. **Pin this in
+  your module's `FROM`.** It records exactly which interface version your
+  module was built against, which is what stops independently-built module
+  repos from drifting out of sync. Mismatched interface versions make topics
+  and actions quietly stop working.
 - **A floating tag**, `rammp-cuda:humble` — always the latest release.
   Convenient, but it *moves*, and Docker will happily reuse a stale cached copy.
   Refresh with `docker pull` or `docker build --pull`.
@@ -119,8 +169,8 @@ acceptable only because the robot contract changes rarely.
 git clone https://github.com/rammp-org/RAMMP-docker.git
 cd RAMMP-docker
 
-make base          # rammp-base:1.0.0 (+ :humble)
-make cuda          # rammp-cuda:1.0.0 (+ :humble)
+make base          # rammp-base:1.0.0-jp6 (+ :humble)
+make cuda          # rammp-cuda:1.0.0-jp6 (+ :humble)
 make test          # smoke-test both images
 ```
 
@@ -146,9 +196,13 @@ Tag a release and CI does the rest — it builds both images on GitHub's native
 arm64 runners, smoke-tests them, and pushes to GHCR:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.0-jp6
+git push origin v1.0.0-jp6
 ```
+
+CI rejects a tag that doesn't match `v<semver>-jp<N>`, so a mistyped tag fails
+the build instead of publishing an image whose tag doesn't say what JetPack it
+targets. A prerelease slot is allowed for rehearsals, e.g. `v1.0.0-rc1-jp6`.
 
 Pushes to `main` build and test but publish nothing, so only a tag can change
 what is in the registry. To publish by hand from the Jetson instead:

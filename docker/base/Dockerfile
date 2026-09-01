@@ -17,9 +17,14 @@
 FROM ros:humble
 
 ARG VERSION=dev
+ARG INTERFACES_VERSION=unknown
 LABEL org.opencontainers.image.source="https://github.com/rammp-org/RAMMP-docker" \
       org.opencontainers.image.description="ROS 2 Humble + Cyclone DDS + RAMMP-interfaces (Jetson/arm64)" \
-      org.opencontainers.image.version="${VERSION}"
+      org.opencontainers.image.version="${VERSION}" \
+      org.rammp.interfaces="${INTERFACES_VERSION}"
+# org.rammp.interfaces is the version of the compiled-in interface contract
+# (from the packages' package.xml). It is a label, not part of the tag, so
+# `docker inspect` answers it without the tag having to encode everything.
 
 # Build-time only: ARG rather than ENV so the setting does not leak into the
 # runtime environment of every downstream module.
