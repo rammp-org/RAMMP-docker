@@ -16,7 +16,7 @@ container `FROM` one of these published base images.
 |---|---|
 | Module | Jetson Orin NX (Seeed reComputer J4012) → Orin AGX |
 | SoC | Tegra234, compute capability **sm_87** |
-| JetPack | 6.1 / 6.2 (L4T **r36.4.x**) |
+| JetPack | **6.1+** (6.1 / 6.2, L4T **r36.4.x**) — *not* 6.0 |
 | CUDA | 12.6 |
 | OS in image | Ubuntu 22.04, Python 3.10 |
 
@@ -37,7 +37,11 @@ but also an ARM Mac (inside an arm64 Linux VM / Docker Desktop) or an AWS
 Graviton instance, since it needs no GPU. It will not run on an x86 machine:
 there is no amd64 variant, and you get `exec format error`.
 
-**`rammp-cuda`** runs only on a **Jetson Orin with JetPack 6.x (L4T r36.4.x)**:
+**`rammp-cuda`** runs only on a **Jetson Orin with JetPack 6.1 or newer (L4T
+r36.4+)**. JetPack 6.0 (L4T r36.2/r36.3) does **not** work: its driver is CUDA
+12.2/12.4-era and cannot back this image's CUDA 12.6 runtime. Check the host
+with `head -1 /etc/nv_tegra_release` — it must report R36, revision 4 or
+later. Why the host version matters at all:
 
 - The image ships the CUDA 12.6 **runtime libraries but no driver**.
   `libcuda.so` and the GPU driver are injected at container start by the
@@ -134,10 +138,14 @@ Release versions are **`<semver>-jp<N>`**, e.g. `rammp-cuda:1.2.0-jp6`:
   base plumbing (torch pin, apt packages, entrypoint). Keep the `<version>` in
   the two interface packages' `package.xml` in lockstep with it, so the
   compiled packages self-report the contract version.
-- The **`-jp` suffix names the JetPack generation** the image runs on. It is
-  `jp6` for all of JetPack 6.1/6.2 (same L4T r36.4.x, same CUDA 12.6) and
+- The **`-jp` suffix names the JetPack generation** the image runs on, and
   changes only when the robot moves to a new JetPack — at which point images
   for both generations can coexist in the registry without being confused.
+  The suffix is a generation, not an exact range: `jp6` means JetPack
+  **6.1 and newer** (everything on L4T r36.4+, so 6.1, 6.2, 6.2.x — one
+  driver era, one CUDA 12.6). JetPack **6.0 is excluded** despite the name —
+  its L4T r36.2/r36.3 driver predates CUDA 12.6 (see
+  [Host requirements](#host-requirements-running-these-images)).
 
 Everything finer-grained (exact CUDA, cuDNN, and torch versions, the compiled
 interface version) is recorded as OCI **labels**, not in the tag:

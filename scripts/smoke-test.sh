@@ -94,6 +94,17 @@ print(f"torch {torch.__version__} / torchvision {torchvision.__version__} / CUDA
     echo
     echo "-- GPU execution (Jetson only) --"
     if [ "$HAS_GPU" = true ]; then
+        # The image needs the host to inject a CUDA 12.6-era driver, i.e. L4T
+        # r36.4+ (JetPack 6.1+). A JetPack 6.0 host (r36.2/r36.3) fails all
+        # the torch checks below with misleading errors -- diagnose it here.
+        l4t_major=$(sed -n 's/^# R\([0-9]*\).*/\1/p' /etc/nv_tegra_release)
+        l4t_rev=$(sed -n 's/.*REVISION: \([0-9]*\).*/\1/p' /etc/nv_tegra_release)
+        if [ "${l4t_major:-0}" -lt 36 ] || { [ "${l4t_major:-0}" -eq 36 ] && [ "${l4t_rev:-0}" -lt 4 ]; }; then
+            fail "host L4T r${l4t_major:-?}.${l4t_rev:-?} is too old for this image" \
+                 "CUDA 12.6 needs L4T r36.4+ (JetPack 6.1+); upgrade JetPack on this host"
+        else
+            pass "host L4T r${l4t_major}.${l4t_rev} supports CUDA 12.6 (r36.4+ required)"
+        fi
         check "torch.cuda.is_available()" gpu_run python3 -c \
             'import torch
 assert torch.cuda.is_available(), "CUDA unavailable -- was --runtime nvidia used?"

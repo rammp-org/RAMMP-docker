@@ -10,9 +10,9 @@
 # VERSION is <semver>-jp<N>, e.g. 1.2.0-jp6. The semver tracks the interface
 # contract and base setup: major/minor for RAMMP-interfaces changes, patch for
 # base plumbing. The -jp suffix names the JetPack generation the image runs on
-# (jp6 covers all of JetPack 6.1/6.2 -- same L4T r36.4.x, same CUDA 12.6) and
-# changes only when the robot moves to a new JetPack. Bump it, tag a release
-# (git tag v1.2.0-jp6), and modules pin the full version in their FROM.
+# (jp6 = JetPack 6.1+ on L4T r36.4+; NOT 6.0, whose driver predates CUDA 12.6)
+# and changes only when the robot moves to a new JetPack. Bump it, tag a
+# release (git tag v1.2.0-jp6), and modules pin the full version in their FROM.
 
 REGISTRY ?= ghcr.io/rammp-org
 VERSION  ?= 1.0.0-jp6

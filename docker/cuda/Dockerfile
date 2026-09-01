@@ -4,7 +4,10 @@
 #
 # JETSON (linux/arm64) ONLY. There is no amd64 variant.
 #
-# Target hardware: Jetson Orin (NX or AGX) on JetPack 6.1/6.2, L4T r36.4.x.
+# Target hardware: Jetson Orin (NX or AGX) on JetPack 6.1+, L4T r36.4.x.
+# NOT JetPack 6.0: its L4T r36.2/r36.3 driver is CUDA 12.2/12.4-era and cannot
+# back the CUDA 12.6 runtime this image carries (the driver is injected from
+# the host at container start, so the host's L4T sets the floor).
 # Both Orin modules are the same Tegra234 SoC at compute capability sm_87, so a
 # single image serves both -- an image validated on an Orin NX is valid on an
 # AGX Orin. (What does NOT transfer between them: serialized TensorRT engines,
@@ -41,7 +44,7 @@ FROM rammp-base:${VERSION}
 
 ARG VERSION
 LABEL org.opencontainers.image.source="https://github.com/rammp-org/RAMMP-docker" \
-      org.opencontainers.image.description="rammp-base + CUDA 12.6 runtime + PyTorch (Jetson Orin, JetPack 6.1/6.2)" \
+      org.opencontainers.image.description="rammp-base + CUDA 12.6 runtime + PyTorch (Jetson Orin, JetPack 6.1+)" \
       org.opencontainers.image.version="${VERSION}"
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -63,7 +66,7 @@ ARG JETSON_PIP_INDEX=https://pypi.jetson-ai-lab.io/jp6/cu126
 # rammp-base). The image TAG only carries <semver>-jp<N>; everything finer
 # lives here, where `docker inspect` can read it:
 #   docker inspect --format '{{json .Config.Labels}}' rammp-cuda:<tag>
-LABEL org.rammp.jetpack="6 (L4T r36.4)" \
+LABEL org.rammp.jetpack="6.1+ (L4T r36.4+; JetPack 6.0 unsupported)" \
       org.rammp.cuda="${CUDA_VERSION}" \
       org.rammp.cudnn="${CUDNN_VERSION}" \
       org.rammp.torch="${TORCH_VERSION}"
