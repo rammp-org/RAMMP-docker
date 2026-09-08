@@ -75,8 +75,9 @@ FROM ghcr.io/rammp-org/rammp-cuda:1.0.0-jp6
 
 ### `rammp-base`
 
-ROS 2 Humble, Cyclone DDS (selected, not merely installed), and
-`RAMMP-interfaces` compiled in. Use this for **hardware drivers and light sensor
+ROS 2 Humble, Cyclone DDS (selected, not merely installed), and the interface
+contract from [`rammp-interfaces-ros2`](https://github.com/rammp-org/rammp-interfaces-ros2)
+compiled in at a pinned tag. Use this for **hardware drivers and light sensor
 nodes** — anything that doesn't need the GPU.
 
 ### `rammp-cuda`
@@ -118,9 +119,10 @@ own file and setting the variable.
 
 ## This repo contains
 
-- **`RAMMP-interfaces/`** — the robot contract: `arm_interfaces` and
-  `rammp_prototype_interfaces`, each its own colcon package. Task-specific
-  interfaces do **not** live here; they live in their own module repos.
+- The interface contract is **not** in this repo. It lives in
+  [`rammp-interfaces-ros2`](https://github.com/rammp-org/rammp-interfaces-ros2)
+  and is fetched at the tag named by `INTERFACES_REF` (see the Makefile).
+  Task-specific interfaces belong in their own module repos, as before.
 - **`docker/`** — the Dockerfiles, the shared entrypoint, and the default
   Cyclone DDS configuration.
 - **`templates/`** — `module.Dockerfile` and `dockerignore.txt` for a new module.
@@ -133,11 +135,12 @@ own file and setting the variable.
 
 Release versions are **`<semver>-jp<N>`**, e.g. `rammp-cuda:1.2.0-jp6`:
 
-- The **semver tracks the interface contract and base setup**: bump major for
-  a breaking `RAMMP-interfaces` change, minor for an additive one, patch for
-  base plumbing (torch pin, apt packages, entrypoint). Keep the `<version>` in
-  the two interface packages' `package.xml` in lockstep with it, so the
-  compiled packages self-report the contract version.
+- The **semver tracks the interface contract and base setup**: bump major when
+  moving `INTERFACES_REF` across a breaking contract change, minor for an
+  additive one, patch for base plumbing (torch pin, apt packages, entrypoint).
+  The contract version is not this repo's to set — `rammp-interfaces-ros2`
+  owns it, and the compiled-in ref is recorded on the `org.rammp.interfaces`
+  label so `docker inspect` answers which one is baked in.
 - The **`-jp` suffix names the JetPack generation** the image runs on, and
   changes only when the robot moves to a new JetPack — at which point images
   for both generations can coexist in the registry without being confused.
@@ -166,8 +169,8 @@ Which tag to use:
   Convenient, but it *moves*, and Docker will happily reuse a stale cached copy.
   Refresh with `docker pull` or `docker build --pull`.
 
-When `RAMMP-interfaces` or the base setup changes, bump `VERSION`, tag a
-release, and rebuild the modules against the new version. That
+When the contract moves or the base setup changes, bump `INTERFACES_REF`
+and/or `VERSION`, tag a release, and rebuild the modules against it. That
 rebuild-on-change step is the price of baking interfaces into the base; it is
 acceptable only because the robot contract changes rarely.
 

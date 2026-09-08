@@ -8,7 +8,7 @@
 # plugin is required on the robot.
 #
 # VERSION is <semver>-jp<N>, e.g. 1.2.0-jp6. The semver tracks the interface
-# contract and base setup: major/minor for RAMMP-interfaces changes, patch for
+# contract and base setup: major/minor for interface-contract changes, patch for
 # base plumbing. The -jp suffix names the JetPack generation the image runs on
 # (jp6 = JetPack 6.1+ on L4T r36.4+; NOT 6.0, whose driver predates CUDA 12.6)
 # and changes only when the robot moves to a new JetPack. Bump it, tag a
@@ -18,16 +18,19 @@ REGISTRY ?= ghcr.io/rammp-org
 VERSION  ?= 1.0.0-jp6
 DISTRO   ?= humble
 
-# The interface contract version compiled into the image, read from the
-# packages themselves and recorded as an OCI label (org.rammp.interfaces) so
-# `docker inspect` can answer "which contract is in this image". Keep the two
-# package.xml <version>s in lockstep with the semver half of VERSION.
-INTERFACES_VERSION := $(shell sed -n 's:.*<version>\(.*\)</version>.*:\1:p' \
-  RAMMP-interfaces/arm_interfaces/package.xml)
+# The rammp-interfaces-ros2 tag compiled into the image. Change this to move
+# the contract; it is recorded as an OCI label (org.rammp.interfaces) so
+# `docker inspect` answers "which contract is in this image" without the image
+# tag having to encode it.
+#
+# It is the REPO tag, which is a checkout coordinate. Individual packages carry
+# their own <version> and may differ from it -- see that repo's README.
+INTERFACES_REF ?= v1.0.0
 
-# Both images build from the REPO ROOT because they COPY RAMMP-interfaces/.
+# Both images build from the REPO ROOT because they copy docker/.
 BUILD = docker build --build-arg VERSION=$(VERSION) \
-                     --build-arg INTERFACES_VERSION=$(INTERFACES_VERSION)
+                     --build-arg INTERFACES_REF=$(INTERFACES_REF) \
+                     --build-arg INTERFACES_VERSION=$(INTERFACES_REF)
 
 .PHONY: help base cuda test push clean
 
