@@ -3,7 +3,7 @@
 #
 # Sources three layers in order, each optional after the first:
 #   1. /opt/ros/humble      the ROS 2 underlay
-#   2. /ros2_ws/install     RAMMP-interfaces, the robot-level contract
+#   2. /ros2_ws/install     the RAMMP interface contract
 #   3. /module_ws/install   the module's own packages, if this is a module image
 #
 # Layer 3 is the extension point for module repos: a module builds into its own

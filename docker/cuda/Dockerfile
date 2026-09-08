@@ -18,7 +18,7 @@
 #
 # ── How the GPU stack is assembled ──────────────────────────────────────────
 # Same lineage as every other RAMMP image: FROM rammp-base, so the ROS 2 and
-# RAMMP-interfaces layers are shared and the interface contract is identical by
+# interface layers are shared and the contract is identical by
 # construction rather than by convention.
 #
 # CUDA comes from NVIDIA's Tegra apt repo (repos/ubuntu2204/arm64 -- the arm64

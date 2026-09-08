@@ -7,7 +7,7 @@
 # to `.dockerignore`.
 #
 # The base image already contains ROS 2 Humble, Cyclone DDS, and
-# RAMMP-interfaces (the robot-level contract), so this copies ONLY your own
+# the RAMMP interface contract, so this copies ONLY your own
 # repo -- your node plus any task-specific interface package this repo defines.
 # No interface source is copied from anywhere else.
 

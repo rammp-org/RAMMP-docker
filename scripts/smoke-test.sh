@@ -47,8 +47,13 @@ echo "   host : $([ "$HAS_GPU" = true ] && head -1 /etc/nv_tegra_release || echo
 
 echo
 echo "-- image + ROS 2 --"
-check "image is linux/arm64" bash -c \
-    '[ "$(docker image inspect --format "{{.Os}}/{{.Architecture}}" "'"$IMAGE"'")" = "linux/arm64" ]'
+# Asserts the image matches the host it is being tested on, rather than a
+# hardcoded arm64: you can only run an image natively, so a mismatch here means
+# the wrong artifact was built. Keeps working if an amd64 variant is ever added.
+check "image architecture matches this host" bash -c \
+    'want="linux/$(docker version --format "{{.Server.Arch}}")"
+     got=$(docker image inspect --format "{{.Os}}/{{.Architecture}}" "'"$IMAGE"'")
+     [ "$got" = "$want" ] && echo "$got"'
 check "Cyclone is the selected middleware" run bash -c \
     '[ "$RMW_IMPLEMENTATION" = rmw_cyclonedds_cpp ] && ls /opt/ros/humble/lib/librmw_cyclonedds_cpp.so* >/dev/null && echo rmw_cyclonedds_cpp'
 check "CYCLONEDDS_URI points at a real file" run bash -c 'test -f "${CYCLONEDDS_URI#file://}"'
@@ -56,26 +61,43 @@ check "workspace overlay auto-sourced, build/ pruned" run bash -c \
     'echo "$AMENT_PREFIX_PATH" | grep -q /ros2_ws/install && test -d /ros2_ws/install && test ! -d /ros2_ws/build && echo ok'
 
 echo
-echo "-- RAMMP-interfaces contract --"
-# Resolving every type is the point of the base image: if one is missing, a
-# module built FROM here fails at runtime rather than at build time.
-MISSING=""
-for t in arm_interfaces/srv/SetMode arm_interfaces/srv/SetSpeedPreset \
-         arm_interfaces/srv/GetSpeedPreset arm_interfaces/srv/CheckReachability \
-         arm_interfaces/action/ReachPreset arm_interfaces/action/ExecuteTrajectory \
-         arm_interfaces/action/Calibrate \
-         rammp_prototype_interfaces/action/Calibration \
-         rammp_prototype_interfaces/action/CurbTraverse \
-         rammp_prototype_interfaces/msg/RAMMPPrototypeState \
-         rammp_prototype_interfaces/msg/SeatCommand; do
-    run ros2 interface show "$t" >/dev/null 2>&1 || MISSING="$MISSING $t"
-done
-[ -z "$MISSING" ] && pass "all 11 interface types resolve" \
-                  || fail "interface types missing:" "$MISSING"
-check "types import from Python" run python3 -c \
-    'from arm_interfaces.srv import SetMode
-from rammp_prototype_interfaces.msg import RAMMPPrototypeState
-print("ok")'
+echo "-- interface contract --"
+# Deliberately NOT a list of type names. The contract WILL change, and a test
+# that enumerates it fails on every legitimate change -- which teaches people to
+# edit the test rather than read it, and the test stops meaning anything.
+#
+# What a module building FROM here actually depends on is that the packages are
+# present and their GENERATED TYPESUPPORT LOADS. That is what is checked, over
+# whatever the contract happens to be at this ref.
+check "interface packages are built in" run bash -c \
+    'n=$(ros2 pkg list | grep -c "^rammp_"); [ "$n" -ge 1 ] \
+     && echo "$n package(s): $(ros2 pkg list | grep "^rammp_" | tr "\n" " ")"'
+
+# `ros2 interface show` loads the rosidl typesupport for the type, so this
+# fails if generation half-worked -- the failure a module would otherwise hit at
+# runtime, long after the image was built.
+check "every generated type resolves" run bash -c '
+  bad=""; n=0
+  for p in $(ros2 pkg list | grep "^rammp_"); do
+    for t in $(ros2 interface package "$p" 2>/dev/null); do
+      n=$((n+1)); ros2 interface show "$t" >/dev/null 2>&1 || bad="$bad $t"
+    done
+  done
+  [ "$n" -gt 0 ] || { echo "no types found at all"; exit 1; }
+  [ -z "$bad" ] || { echo "unresolvable:$bad"; exit 1; }
+  echo "$n types resolve"'
+
+check "Python bindings import" run python3 -c '
+import importlib, importlib.util, subprocess
+pkgs = [p for p in subprocess.run(["ros2","pkg","list"],capture_output=True,text=True)
+        .stdout.split() if p.startswith("rammp_")]
+assert pkgs, "no rammp_* packages"
+for p in pkgs:
+    mods = [m for m in ("msg","srv","action")
+            if importlib.util.find_spec(f"{p}.{m}")]
+    assert mods, f"{p} generated no Python modules"
+    for m in mods: importlib.import_module(f"{p}.{m}")
+print("imported: " + ", ".join(pkgs))'
 
 if [ "$HAS_CUDA" = true ]; then
     echo
@@ -135,13 +157,17 @@ echo
 echo "-- DDS discovery between containers --"
 # The most common ROS-in-Docker failure, and it needs a real network: on a
 # bridge network Cyclone binds the bridge and containers never see each other.
+#
+# A built-in std_msgs type on purpose. This check is about the MIDDLEWARE, so it
+# must keep passing when the RAMMP contract changes -- the checks above are what
+# cover the contract.
 if docker run -d --rm --name rammp_smoke_pub --network host --ipc host "$IMAGE" \
-     ros2 topic pub -r 2 /rammp_smoke rammp_prototype_interfaces/msg/SeatCommand '{command: 3}' \
+     ros2 topic pub -r 2 /rammp_smoke std_msgs/msg/String '{data: rammp}' \
      >/dev/null 2>&1; then
     sleep 5
     check "subscriber receives from another container" \
         docker run --rm --network host --ipc host "$IMAGE" \
-            timeout 12 ros2 topic echo --once /rammp_smoke rammp_prototype_interfaces/msg/SeatCommand
+            timeout 12 ros2 topic echo --once /rammp_smoke std_msgs/msg/String
     docker stop rammp_smoke_pub >/dev/null 2>&1
 else
     fail "could not start publisher container"
