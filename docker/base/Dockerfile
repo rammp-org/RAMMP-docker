@@ -58,7 +58,7 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
 # A tarball rather than a clone: the repo is public and curl is already
 # installed above, so this needs neither git nor vcstool in the image, and no
 # .git directory lands in a layer.
-ARG INTERFACES_REF=v1.0.0
+ARG INTERFACES_REF=v1.1.0
 RUN mkdir -p /ros2_ws/src/rammp-interfaces-ros2 \
     && curl -fsSL "https://github.com/rammp-org/rammp-interfaces-ros2/archive/refs/tags/${INTERFACES_REF}.tar.gz" \
        | tar xz -C /ros2_ws/src/rammp-interfaces-ros2 --strip-components=1 \

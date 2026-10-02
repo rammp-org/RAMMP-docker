@@ -15,7 +15,7 @@
 # release (git tag v1.2.0-jp6), and modules pin the full version in their FROM.
 
 REGISTRY ?= ghcr.io/rammp-org
-VERSION  ?= 1.0.0-jp6
+VERSION  ?= 1.1.0-jp6
 DISTRO   ?= humble
 
 # The rammp-interfaces-ros2 tag compiled into the image. Change this to move
@@ -25,7 +25,7 @@ DISTRO   ?= humble
 #
 # It is the REPO tag, which is a checkout coordinate. Individual packages carry
 # their own <version> and may differ from it -- see that repo's README.
-INTERFACES_REF ?= v1.0.0
+INTERFACES_REF ?= v1.1.0
 
 # Both images build from the REPO ROOT because they copy docker/.
 BUILD = docker build --build-arg VERSION=$(VERSION) \
