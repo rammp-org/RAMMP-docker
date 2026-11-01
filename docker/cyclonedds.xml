@@ -22,10 +22,29 @@
       <Interfaces>
         <NetworkInterface autodetermine="true" priority="default" multicast="default" />
       </Interfaces>
-      <AllowMulticast>default</AllowMulticast>
+      <!--
+        spdp: multicast for participant discovery only; user data goes
+        unicast. With "default", any topic with more than one reader is
+        multicast onto the selected NIC. On a robot that NIC is usually the
+        arm's network, and camera images multicast there (~39 MB/s measured)
+        starve the Kinova's 1 kHz cyclic UDP channel until BaseCyclic Refresh
+        times out. Unicast between processes on the same host never leaves
+        the machine.
+      -->
+      <AllowMulticast>spdp</AllowMulticast>
     </General>
     <Discovery>
-      <ParticipantIndex>auto</ParticipantIndex>
+      <!--
+        none: each participant binds OS-assigned ports and advertises them in
+        its multicast discovery announcements, so there is no per-host cap.
+        "auto" gives each participant a fixed port slot and Cyclone's default
+        caps those at 10 per host per domain. Every process in every
+        --network host container counts, so a full robot stack runs out and
+        the next node fails with "Failed to find a free participant index".
+        Fixed slots only matter for unicast discovery through a <Peers> list,
+        which RAMMP does not use.
+      -->
+      <ParticipantIndex>none</ParticipantIndex>
     </Discovery>
   </Domain>
 </CycloneDDS>
