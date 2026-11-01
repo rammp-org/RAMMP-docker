@@ -15,7 +15,7 @@
 # release (git tag v1.2.0-jp6), and modules pin the full version in their FROM.
 
 REGISTRY ?= ghcr.io/rammp-org
-VERSION  ?= 1.1.0-jp6
+VERSION  ?= 1.1.1-jp6
 DISTRO   ?= humble
 
 # The rammp-interfaces-ros2 tag compiled into the image. Change this to move
