@@ -34,14 +34,17 @@
       <AllowMulticast>spdp</AllowMulticast>
     </General>
     <Discovery>
-      <ParticipantIndex>auto</ParticipantIndex>
       <!--
-        Cyclone's default of 9 caps a host at 10 participants per domain, and
-        every process in every --network host container counts. A full robot
-        stack exceeds that; the next node then fails with "Failed to find a
-        free participant index".
+        none: each participant binds OS-assigned ports and advertises them in
+        its multicast discovery announcements, so there is no per-host cap.
+        "auto" gives each participant a fixed port slot and Cyclone's default
+        caps those at 10 per host per domain. Every process in every
+        --network host container counts, so a full robot stack runs out and
+        the next node fails with "Failed to find a free participant index".
+        Fixed slots only matter for unicast discovery through a <Peers> list,
+        which RAMMP does not use.
       -->
-      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+      <ParticipantIndex>none</ParticipantIndex>
     </Discovery>
   </Domain>
 </CycloneDDS>
