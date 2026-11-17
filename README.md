@@ -119,7 +119,9 @@ own file and setting the variable.
 
 That file names no network interface, so Cyclone picks one. To pin a robot's
 interface without replacing the rest of the config (from `2.1.0-jp6`), list a
-second file after the base one; Cyclone merges them in order:
+second file after the base one. Cyclone merges them in order: repeated
+elements such as `NetworkInterface` accumulate, and a later single value
+overrides the base file's:
 
 ```bash
 -e CYCLONEDDS_URI=file:///etc/cyclonedds/config.xml,file:///cfg/iface.xml
@@ -127,8 +129,9 @@ second file after the base one; Cyclone merges them in order:
 
 where `iface.xml` is only
 `<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eno1" /></Interfaces></General></Domain></CycloneDDS>`.
-On images before `2.1.0-jp6` this fails at node creation, because their file
-also asks Cyclone to autodetermine an interface.
+Images before `2.1.0-jp6` also autodetermine an interface, so there this
+fails at node creation if you name the NIC autodetermine picks, and silently
+binds both NICs if you name any other.
 
 ## This repo contains
 
